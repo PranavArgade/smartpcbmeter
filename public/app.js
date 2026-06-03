@@ -1,3 +1,23 @@
+// Import Firebase SDKs
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+// Firebase Configurations
+const firebaseConfig = {
+  apiKey: "AIzaSyBgZPgRrBS4m47iSfymLM15qzehxPZyvG4",
+  authDomain: "pcb-meter.firebaseapp.com",
+  databaseURL: "https://pcb-meter-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "pcb-meter",
+  storageBucket: "pcb-meter.firebasestorage.app",
+  messagingSenderId: "485431759807",
+  appId: "1:485431759807:web:f5e14201a93117ef93470a",
+  measurementId: "G-R95VVVLHQR"
+};
+
+// Initialize Firebase
+const firebaseApp = initializeApp(firebaseConfig);
+const firebaseDb = getDatabase(firebaseApp);
+
 // ==========================================================================
 // STATE MANAGEMENT
 // ==========================================================================
@@ -342,84 +362,135 @@ async function updateChartsData() {
 // POLLING LOGIC & API INTERACTION
 // ==========================================================================
 let pollInterval = null;
+let firebaseListeners = [];
 
 function startDashboardPolling() {
   stopDashboardPolling();
   
-  const poll = async () => {
-    await fetchLatestTelemetry();
-    await fetchStats();
-    await updateChartsData();
-  };
+  // Set up Firebase Realtime Database Listeners
+  const latestReadingRef = ref(firebaseDb, 'latest_reading');
+  const statsRef = ref(firebaseDb, 'stats');
+  const activeOperatorRef = ref(firebaseDb, 'active_operator');
   
-  poll(); // Run once immediately
-  pollInterval = setInterval(poll, 2000); // Polling every 2 seconds
+  // 1. Listen to Latest Reading
+  const unsubscribeLatest = onValue(latestReadingRef, (snapshot) => {
+    const reading = snapshot.val();
+    if (reading) {
+      handleLatestTelemetry(reading);
+    }
+  });
+  
+  // 2. Listen to Stats
+  const unsubscribeStats = onValue(statsRef, (snapshot) => {
+    const stats = snapshot.val();
+    if (stats) {
+      handleStatsUpdate(stats);
+    }
+  });
+  
+  // 3. Listen to Active Operator
+  const unsubscribeOperator = onValue(activeOperatorRef, (snapshot) => {
+    const op = snapshot.val();
+    if (op) {
+      handleOperatorUpdate(op);
+    }
+  });
+  
+  firebaseListeners.push(unsubscribeLatest, unsubscribeStats, unsubscribeOperator);
+  
+  // We still poll charts data from SQLite history every 2 seconds to update charts
+  pollInterval = setInterval(updateChartsData, 2000);
+  
+  // Initial historical data load
+  fetchHistory();
 }
 
 function stopDashboardPolling() {
+  // Unsubscribe from Firebase listeners
+  firebaseListeners.forEach(unsubscribe => {
+    try {
+      unsubscribe();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+  firebaseListeners = [];
+  
   if (pollInterval) {
     clearInterval(pollInterval);
     pollInterval = null;
   }
 }
 
-async function fetchLatestTelemetry() {
-  try {
-    const response = await fetch('/api/readings/latest');
-    if (!response.ok) {
-      if (response.status === 404) {
-        // No readings yet
-        return;
-      }
-      throw new Error('Telemetry request failed');
-    }
-    
-    const reading = await response.json();
-    
-    // Update live metrics cards
-    DOM.valAC.textContent = reading.ac_voltage.toFixed(1);
-    DOM.valDC.textContent = reading.dc_voltage.toFixed(2);
-    DOM.valCurrent.textContent = reading.current.toFixed(3);
-    DOM.valTemp.textContent = reading.temperature.toFixed(1);
-    
-    // Check parameters ranges for metric card badges
-    updateMetricBadge(DOM.badgeAC, reading.ac_voltage, 215, 245, 'V');
-    updateMetricBadge(DOM.badgeDC, (reading.dc_voltage >= 4.5 && reading.dc_voltage <= 5.5) || (reading.dc_voltage >= 11.0 && reading.dc_voltage <= 12.8), true, true, '');
-    updateMetricBadge(DOM.badgeCurrent, reading.current, 0.1, 3.5, 'A');
-    updateMetricBadge(DOM.badgeTemp, reading.temperature, -100, 50, '°C');
+function handleLatestTelemetry(reading) {
+  // Update live metrics cards
+  DOM.valAC.textContent = reading.ac_voltage.toFixed(1);
+  DOM.valDC.textContent = reading.dc_voltage.toFixed(2);
+  DOM.valCurrent.textContent = reading.current.toFixed(3);
+  DOM.valTemp.textContent = reading.temperature.toFixed(1);
+  
+  // Check parameters ranges for metric card badges
+  updateMetricBadge(DOM.badgeAC, reading.ac_voltage, 215, 245, 'V');
+  updateMetricBadge(DOM.badgeDC, (reading.dc_voltage >= 4.5 && reading.dc_voltage <= 5.5) || (reading.dc_voltage >= 11.0 && reading.dc_voltage <= 12.8), true, true, '');
+  updateMetricBadge(DOM.badgeCurrent, reading.current, 0.1, 3.5, 'A');
+  updateMetricBadge(DOM.badgeTemp, reading.temperature, -100, 50, '°C');
 
-    const updateTimeStr = new Date(reading.timestamp).toLocaleTimeString();
-    DOM.timeAC.textContent = `Last updated: ${updateTimeStr}`;
-    DOM.timeDC.textContent = `Last updated: ${updateTimeStr}`;
-    DOM.timeCurrent.textContent = `Last updated: ${updateTimeStr}`;
-    DOM.timeTemp.textContent = `Last updated: ${updateTimeStr}`;
+  const updateTimeStr = new Date(reading.timestamp).toLocaleTimeString();
+  DOM.timeAC.textContent = `Last updated: ${updateTimeStr}`;
+  DOM.timeDC.textContent = `Last updated: ${updateTimeStr}`;
+  DOM.timeCurrent.textContent = `Last updated: ${updateTimeStr}`;
+  DOM.timeTemp.textContent = `Last updated: ${updateTimeStr}`;
+  
+  // Keep track of online/offline status
+  state.lastReadingTime = new Date(reading.timestamp);
+  checkSystemStatusOnline();
+
+  // Check if it's a new reading to post to the notifications panel
+  if (state.lastReadingId !== reading.id) {
+    state.lastReadingId = reading.id;
+    addNotification(`New Reading Received: ID #${reading.id} (AC: ${reading.ac_voltage.toFixed(1)}V, DC: ${reading.dc_voltage.toFixed(1)}V) [Firebase RTDB]`, 'info');
     
-    // Keep track of online/offline status
-    state.lastReadingTime = new Date(reading.timestamp);
-    checkSystemStatusOnline();
-
-    // Check if it's a new reading to post to the notifications panel
-    if (state.lastReadingId !== reading.id) {
-      state.lastReadingId = reading.id;
-      addNotification(`New Reading Received: ID #${reading.id} (AC: ${reading.ac_voltage.toFixed(1)}V, DC: ${reading.dc_voltage.toFixed(1)}V)`, 'info');
-      
-      if (reading.status === 'PASS') {
-        addNotification(`Pass Result: Batch ${reading.batch_no} passed test.`, 'pass');
-      } else {
-        addNotification(`Fail Result: Anomaly detected on Batch ${reading.batch_no}!`, 'fail');
-      }
-
-      // Increment Operator readings collected counter in real-time
-      const countBadge = document.getElementById('operator-readings-count');
-      countBadge.textContent = parseInt(countBadge.textContent) + 1;
-
-      // Reload history table to show new entry at the top
-      fetchHistory();
+    if (reading.status === 'PASS') {
+      addNotification(`Pass Result: Batch ${reading.batch_no} passed test.`, 'pass');
+    } else {
+      addNotification(`Fail Result: Anomaly detected on Batch ${reading.batch_no}!`, 'fail');
     }
 
-  } catch (error) {
-    console.error('Error fetching telemetry:', error);
+    // Increment Operator readings collected counter in real-time
+    const countBadge = document.getElementById('operator-readings-count');
+    countBadge.textContent = parseInt(countBadge.textContent) + 1;
+
+    // Reload history table to show new entry at the top
+    fetchHistory();
   }
+}
+
+function handleStatsUpdate(stats) {
+  DOM.kpiTotalTests.textContent = stats.totalTests;
+  DOM.kpiTodayTests.textContent = stats.todayTests;
+  DOM.kpiAvgAC.textContent = `${stats.avgAcVoltage.toFixed(1)} V`;
+  DOM.kpiAvgDC.textContent = `${stats.avgDcVoltage.toFixed(2)} V`;
+  DOM.kpiAvgCurrent.textContent = `${stats.avgCurrent.toFixed(3)} A`;
+  DOM.kpiAvgTemp.textContent = `${stats.avgTemperature.toFixed(1)} °C`;
+  DOM.kpiPassCount.textContent = stats.passCount;
+  DOM.kpiFailCount.textContent = stats.failCount;
+}
+
+function handleOperatorUpdate(op) {
+  state.activeOperator = op.operatorName;
+  state.activeBatch = op.batchNo;
+  
+  DOM.activeOperatorName.textContent = op.operatorName;
+  DOM.activeOperatorHeader.textContent = op.operatorName;
+  DOM.activeBatchNumber.textContent = op.batchNo;
+  DOM.operatorReadingsCount.textContent = op.readingsCount;
+  
+  const loginDate = new Date(op.loginTime);
+  DOM.operatorLoginTime.textContent = loginDate.toLocaleTimeString();
+  
+  // Set inputs value
+  DOM.operatorSelect.value = op.operatorName;
+  DOM.batchInput.value = op.batchNo;
 }
 
 function updateMetricBadge(badgeEl, val, minOrBool, max, unit) {
@@ -476,47 +547,13 @@ function setSystemOffline() {
 // Periodically evaluate offline status (even if no telemetry comes in to update clock diff)
 setInterval(checkSystemStatusOnline, 5000);
 
-async function fetchStats() {
-  try {
-    const response = await fetch('/api/readings/stats');
-    if (!response.ok) return;
-    
-    const stats = await response.json();
-    
-    DOM.kpiTotalTests.textContent = stats.totalTests;
-    DOM.kpiTodayTests.textContent = stats.todayTests;
-    DOM.kpiAvgAC.textContent = `${stats.avgAcVoltage.toFixed(1)} V`;
-    DOM.kpiAvgDC.textContent = `${stats.avgDcVoltage.toFixed(2)} V`;
-    DOM.kpiAvgCurrent.textContent = `${stats.avgCurrent.toFixed(3)} A`;
-    DOM.kpiAvgTemp.textContent = `${stats.avgTemperature.toFixed(1)} °C`;
-    DOM.kpiPassCount.textContent = stats.passCount;
-    DOM.kpiFailCount.textContent = stats.failCount;
-  } catch (err) {
-    console.error('Error fetching statistics:', err);
-  }
-}
-
 async function fetchActiveOperator() {
   try {
     const response = await fetch('/api/operator/active');
     if (!response.ok) return;
     
     const op = await response.json();
-    
-    state.activeOperator = op.operatorName;
-    state.activeBatch = op.batchNo;
-    
-    DOM.activeOperatorName.textContent = op.operatorName;
-    DOM.activeOperatorHeader.textContent = op.operatorName;
-    DOM.activeBatchNumber.textContent = op.batchNo;
-    DOM.operatorReadingsCount.textContent = op.readingsCount;
-    
-    const loginDate = new Date(op.loginTime);
-    DOM.operatorLoginTime.textContent = loginDate.toLocaleTimeString();
-    
-    // Set inputs value
-    DOM.operatorSelect.value = op.operatorName;
-    DOM.batchInput.value = op.batchNo;
+    handleOperatorUpdate(op);
   } catch (err) {
     console.error('Error fetching operator info:', err);
   }

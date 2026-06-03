@@ -4,6 +4,24 @@ const path = require('path');
 const xlsx = require('xlsx');
 const dbOperations = require('./database');
 
+const FIREBASE_DB_URL = "https://pcb-meter-default-rtdb.asia-southeast1.firebasedatabase.app";
+
+async function syncToFirebase(nodePath, data) {
+  try {
+    const url = `${FIREBASE_DB_URL}/${nodePath}.json`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+      console.error(`Firebase Sync Error for ${nodePath}:`, response.statusText);
+    }
+  } catch (err) {
+    console.error(`Firebase Sync Exception for ${nodePath}:`, err.message);
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -38,6 +56,10 @@ app.post('/api/operator/select', async (req, res) => {
       return res.status(400).json({ error: 'operatorName and batchNo are required' });
     }
     const updated = await dbOperations.setActiveOperator(operatorName, batchNo);
+    
+    // Sync operator details to Firebase Realtime Database
+    syncToFirebase('active_operator', updated);
+
     res.json({ success: true, data: updated });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -73,6 +95,23 @@ app.post('/api/readings', async (req, res) => {
       status,
       timestamp
     });
+
+    // Background task to synchronize with Firebase Realtime Database
+    (async () => {
+      try {
+        const latest = await dbOperations.getLatestReading();
+        const stats = await dbOperations.getStats();
+        const active = await dbOperations.getActiveOperator();
+        
+        await Promise.all([
+          syncToFirebase('latest_reading', latest),
+          syncToFirebase('stats', stats),
+          syncToFirebase('active_operator', active)
+        ]);
+      } catch (syncErr) {
+        console.error('Error in post-insert Firebase sync:', syncErr.message);
+      }
+    })();
 
     res.status(201).json({ success: true, data: result });
   } catch (error) {
@@ -180,4 +219,22 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Smart PCB Meter Server running on http://localhost:${PORT}`);
+  
+  // Sync initial state from SQLite to Firebase RTDB on startup
+  (async () => {
+    try {
+      const latest = await dbOperations.getLatestReading();
+      if (latest) await syncToFirebase('latest_reading', latest);
+      
+      const stats = await dbOperations.getStats();
+      await syncToFirebase('stats', stats);
+      
+      const active = await dbOperations.getActiveOperator();
+      await syncToFirebase('active_operator', active);
+      
+      console.log('Firebase Realtime Database initial state synced successfully.');
+    } catch (err) {
+      console.error('Error during initial Firebase sync:', err.message);
+    }
+  })();
 });
