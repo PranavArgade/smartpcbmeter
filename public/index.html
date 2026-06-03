@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart PCB Meter - Industrial IoT Dashboard</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- ApexCharts -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="login-view">
+
+  <!-- ==================== LOGIN SCREEN ==================== -->
+  <div id="login-container" class="login-container">
+    <div class="login-bg-overlay"></div>
+    <div class="login-card">
+      <div class="login-header">
+        <div class="logo-box">
+          <i data-lucide="cpu" class="logo-icon text-blue"></i>
+        </div>
+        <h1>Smart PCB Meter</h1>
+        <p class="subtitle">Industrial Testing & Monitoring System</p>
+      </div>
+
+      <form id="login-form" class="login-form">
+        <div class="form-group">
+          <label for="email"><i data-lucide="mail"></i> Email Address</label>
+          <input type="email" id="email" placeholder="pcb@gmail.com" required autocomplete="email">
+        </div>
+
+        <div class="form-group">
+          <label for="password"><i data-lucide="lock"></i> Password</label>
+          <div class="password-input-wrapper">
+            <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" id="toggle-password" class="password-toggle-btn">
+              <i data-lucide="eye" id="password-eye-icon"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <label class="checkbox-label">
+            <input type="checkbox" id="remember-me">
+            <span class="custom-checkbox"></span>
+            Remember Me
+          </label>
+          <a href="#" class="forgot-pwd" id="forgot-password">Forgot Password?</a>
+        </div>
+
+        <button type="submit" class="btn-primary" id="login-submit-btn">
+          <span>Authenticate</span>
+          <i data-lucide="log-in"></i>
+        </button>
+      </form>
+
+      <div class="login-footer">
+        <p>Credentials: <strong>pcb@gmail.com</strong> / <strong>pcb@123</strong></p>
+        <p class="credits">Raspberry Pi 4 + ADS1115 ADC Interface</p>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== DASHBOARD SCREEN ==================== -->
+  <div id="dashboard-container" class="dashboard-container">
+    
+    <!-- Header -->
+    <header class="main-header">
+      <div class="header-left">
+        <div class="logo-wrapper">
+          <i data-lucide="cpu" class="dashboard-logo"></i>
+          <div>
+            <h2>Smart PCB Meter</h2>
+            <span class="header-subtitle">Industrial IoT Live telemetry</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="status-pill status-online" id="system-status-indicator">
+          <span class="pulse-dot"></span>
+          <span class="status-text">SYSTEM ONLINE</span>
+        </div>
+        <div class="header-clock">
+          <i data-lucide="calendar"></i>
+          <span id="current-date-time">Loading System Time...</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Theme Switcher -->
+        <button id="theme-toggle-btn" class="icon-btn" title="Toggle Theme">
+          <i data-lucide="sun" class="sun-icon"></i>
+          <i data-lucide="moon" class="moon-icon"></i>
+        </button>
+
+        <!-- User Profile Dropdown -->
+        <div class="profile-dropdown">
+          <div class="profile-trigger" id="profile-trigger">
+            <div class="profile-avatar">
+              <i data-lucide="user"></i>
+            </div>
+            <div class="profile-info">
+              <span class="profile-name">Operator Panel</span>
+              <span class="profile-role" id="display-active-operator-header">Active Operator</span>
+            </div>
+            <i data-lucide="chevron-down" class="chevron"></i>
+          </div>
+        </div>
+
+        <button id="logout-btn" class="logout-btn" title="Log Out">
+          <span>Log Out</span>
+          <i data-lucide="log-out"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Layout -->
+    <main class="dashboard-grid">
+      
+      <!-- LEFT COLUMN: Configurations, Info, & Notification Panels -->
+      <aside class="sidebar-column">
+        
+        <!-- Operator Management Panel -->
+        <section class="card config-card">
+          <div class="card-header">
+            <i data-lucide="users-round" class="card-icon"></i>
+            <h3>Operator & Batch</h3>
+          </div>
+          <div class="card-content">
+            <div class="operator-display">
+              <div class="meta-item">
+                <span class="label">Active Operator:</span>
+                <span class="val highlight" id="active-operator-name">Pranav Argade</span>
+              </div>
+              <div class="meta-item">
+                <span class="label">Batch Number:</span>
+                <span class="val highlight" id="active-batch-number">B-2026-06-001</span>
+              </div>
+              <div class="meta-item">
+                <span class="label">Operator Logged In:</span>
+                <span class="val" id="operator-login-time">--:--:--</span>
+              </div>
+              <div class="meta-item">
+                <span class="label">Readings Collected:</span>
+                <span class="val counter-badge" id="operator-readings-count">0</span>
+              </div>
+            </div>
+
+            <hr class="divider">
+
+            <form id="operator-form" class="sidebar-form">
+              <div class="form-group-sm">
+                <label for="operator-select">Select Active Operator</label>
+                <div class="select-wrapper">
+                  <select id="operator-select" required>
+                    <option value="Pranav Argade">Pranav Argade</option>
+                    <option value="Jaymin Patel">Jaymin Patel</option>
+                    <option value="Swapna Kadam">Swapna Kadam</option>
+                    <option value="Sakshi Pujari">Sakshi Pujari</option>
+                  </select>
+                  <i data-lucide="chevron-down" class="select-arrow"></i>
+                </div>
+              </div>
+              <div class="form-group-sm">
+                <label for="batch-input">Batch ID</label>
+                <input type="text" id="batch-input" placeholder="B-YYYY-MM-###" required>
+              </div>
+              <button type="submit" class="btn-secondary">
+                <span>Update Active Batch</span>
+                <i data-lucide="refresh-cw"></i>
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <!-- Test Information Panel -->
+        <section class="card info-card">
+          <div class="card-header">
+            <i data-lucide="info" class="card-icon"></i>
+            <h3>Test Information</h3>
+          </div>
+          <div class="card-content">
+            <ul class="info-list">
+              <li>
+                <span class="info-lbl">Project Name:</span>
+                <span class="info-val">Smart PCB Meter</span>
+              </li>
+              <li>
+                <span class="info-lbl">Guide Name:</span>
+                <span class="info-val">Kiran Jadhav</span>
+              </li>
+              <li>
+                <span class="info-lbl">Platform:</span>
+                <span class="info-val">Raspberry Pi 4 Model B</span>
+              </li>
+              <li>
+                <span class="info-lbl">ADC Module:</span>
+                <span class="info-val badge-adc">ADS1115 16-Bit</span>
+              </li>
+            </ul>
+            <div class="monitored-parameters">
+              <span class="param-title">Parameters Monitored:</span>
+              <div class="param-tags">
+                <span class="tag">AC Voltage</span>
+                <span class="tag">DC Voltage</span>
+                <span class="tag">Current</span>
+                <span class="tag">Temperature</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Notifications & Event Logs Panel -->
+        <section class="card logs-card">
+          <div class="card-header">
+            <i data-lucide="bell" class="card-icon"></i>
+            <h3>Notifications Log</h3>
+            <button id="clear-logs-btn" class="clear-btn" title="Clear logs">Clear</button>
+          </div>
+          <div class="card-content">
+            <div class="notification-container" id="notifications-panel">
+              <!-- Logs dynamically generated -->
+              <div class="notification-item info">
+                <span class="time">12:42:51</span>
+                <span class="msg">System Started. Ready for RPi telemetry...</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </aside>
+
+
+      <!-- RIGHT/CENTER COLUMN: Metrics, Charts, Stats, History Table -->
+      <div class="main-content-column">
+        
+        <!-- Live Monitoring Section -->
+        <section class="metrics-grid">
+          <!-- Card 1: AC Voltage -->
+          <div class="metric-card" id="card-ac-voltage">
+            <div class="card-top">
+              <span class="metric-label">AC Voltage</span>
+              <div class="metric-icon-box ac-box">
+                <i data-lucide="activity" class="metric-icon"></i>
+              </div>
+            </div>
+            <div class="card-mid">
+              <span class="metric-value" id="val-ac-voltage">--.-</span>
+              <span class="metric-unit">V</span>
+            </div>
+            <div class="card-bottom">
+              <div class="metric-badge status-normal" id="badge-ac-voltage">NORMAL</div>
+              <span class="metric-updated" id="time-ac-voltage">Last updated: --</span>
+            </div>
+          </div>
+
+          <!-- Card 2: DC Voltage -->
+          <div class="metric-card" id="card-dc-voltage">
+            <div class="card-top">
+              <span class="metric-label">DC Voltage</span>
+              <div class="metric-icon-box dc-box">
+                <i data-lucide="battery-charging" class="metric-icon"></i>
+              </div>
+            </div>
+            <div class="card-mid">
+              <span class="metric-value" id="val-dc-voltage">--.-</span>
+              <span class="metric-unit">V</span>
+            </div>
+            <div class="card-bottom">
+              <div class="metric-badge status-normal" id="badge-dc-voltage">NORMAL</div>
+              <span class="metric-updated" id="time-dc-voltage">Last updated: --</span>
+            </div>
+          </div>
+
+          <!-- Card 3: Current -->
+          <div class="metric-card" id="card-current">
+            <div class="card-top">
+              <span class="metric-label">Current</span>
+              <div class="metric-icon-box current-box">
+                <i data-lucide="zap" class="metric-icon"></i>
+              </div>
+            </div>
+            <div class="card-mid">
+              <span class="metric-value" id="val-current">--.---</span>
+              <span class="metric-unit">A</span>
+            </div>
+            <div class="card-bottom">
+              <div class="metric-badge status-normal" id="badge-current">NORMAL</div>
+              <span class="metric-updated" id="time-current">Last updated: --</span>
+            </div>
+          </div>
+
+          <!-- Card 4: Temperature -->
+          <div class="metric-card" id="card-temperature">
+            <div class="card-top">
+              <span class="metric-label">Temperature</span>
+              <div class="metric-icon-box temp-box">
+                <i data-lucide="thermometer" class="metric-icon"></i>
+              </div>
+            </div>
+            <div class="card-mid">
+              <span class="metric-value" id="val-temperature">--.-</span>
+              <span class="metric-unit">°C</span>
+            </div>
+            <div class="card-bottom">
+              <div class="metric-badge status-normal" id="badge-temperature">NORMAL</div>
+              <span class="metric-updated" id="time-temperature">Last updated: --</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Charts Grid Section -->
+        <section class="charts-section card">
+          <div class="card-header">
+            <i data-lucide="line-chart" class="card-icon"></i>
+            <h3>Real-Time Analytics (Last 100 Readings)</h3>
+            <span class="card-header-badge">Updates every 2s</span>
+          </div>
+          <div class="card-content">
+            <div class="charts-tabs-wrapper">
+              <div class="charts-grid-layout">
+                <div class="chart-wrapper-card">
+                  <div class="chart-title-bar">
+                    <h4>AC Voltage (V) vs Time</h4>
+                  </div>
+                  <div id="chart-ac-voltage"></div>
+                </div>
+                <div class="chart-wrapper-card">
+                  <div class="chart-title-bar">
+                    <h4>DC Voltage (V) vs Time</h4>
+                  </div>
+                  <div id="chart-dc-voltage"></div>
+                </div>
+                <div class="chart-wrapper-card">
+                  <div class="chart-title-bar">
+                    <h4>Current (A) vs Time</h4>
+                  </div>
+                  <div id="chart-current"></div>
+                </div>
+                <div class="chart-wrapper-card">
+                  <div class="chart-title-bar">
+                    <h4>Temperature (°C) vs Time</h4>
+                  </div>
+                  <div id="chart-temperature"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- KPI Statistics Section -->
+        <section class="stats-section-row">
+          <!-- Total Tests KPI -->
+          <div class="kpi-mini-card">
+            <div class="kpi-icon-wrapper blue-glow">
+              <i data-lucide="folder-git"></i>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-val" id="kpi-total-tests">0</span>
+              <span class="kpi-lbl">Total Tests</span>
+            </div>
+          </div>
+          <!-- Today's Tests KPI -->
+          <div class="kpi-mini-card">
+            <div class="kpi-icon-wrapper blue-glow">
+              <i data-lucide="calendar-check-2"></i>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-val" id="kpi-today-tests">0</span>
+              <span class="kpi-lbl">Today's Tests</span>
+            </div>
+          </div>
+          <!-- Avg AC Voltage -->
+          <div class="kpi-mini-card">
+            <div class="kpi-icon-wrapper">
+              <i data-lucide="waves"></i>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-val" id="kpi-avg-ac">0.0 V</span>
+              <span class="kpi-lbl">Avg AC Voltage</span>
+            </div>
+          </div>
+          <!-- Avg DC Voltage -->
+          <div class="kpi-mini-card">
+            <div class="kpi-icon-wrapper">
+              <i data-lucide="combine"></i>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-val" id="kpi-avg-dc">0.0 V</span>
+              <span class="kpi-lbl">Avg DC Voltage</span>
+            </div>
+          </div>
+          <!-- Avg Current -->
+          <div class="kpi-mini-card">
+            <div class="kpi-icon-wrapper">
+              <i data-lucide="gauge"></i>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-val" id="kpi-avg-current">0.0 A</span>
+              <span class="kpi-lbl">Avg Current</span>
+            </div>
+          </div>
+          <!-- Avg Temperature -->
+          <div class="kpi-mini-card">
+            <div class="kpi-icon-wrapper">
+              <i data-lucide="thermometer-snowflake"></i>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-val" id="kpi-avg-temp">0.0 °C</span>
+              <span class="kpi-lbl">Avg Temp</span>
+            </div>
+          </div>
+          <!-- Pass/Fail KPI -->
+          <div class="kpi-mini-card pass-fail-card">
+            <div class="kpi-details split">
+              <div>
+                <span class="kpi-val text-green" id="kpi-pass-count">0</span>
+                <span class="kpi-lbl">Passed</span>
+              </div>
+              <div class="vertical-pipe"></div>
+              <div>
+                <span class="kpi-val text-red" id="kpi-fail-count">0</span>
+                <span class="kpi-lbl">Failed</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Historical Readings Table Section -->
+        <section class="card table-card">
+          <div class="card-header table-header-flex">
+            <div class="header-title-wrapper">
+              <i data-lucide="table-properties" class="card-icon"></i>
+              <h3>PCB Readings History</h3>
+            </div>
+            
+            <div class="table-actions">
+              <!-- Search Input -->
+              <div class="search-input-box">
+                <i data-lucide="search" class="search-icon"></i>
+                <input type="text" id="table-search-input" placeholder="Search batch/operator...">
+              </div>
+
+              <!-- Filter Operator -->
+              <div class="select-wrapper-sm">
+                <select id="table-filter-operator">
+                  <option value="">All Operators</option>
+                  <option value="Pranav Argade">Pranav Argade</option>
+                  <option value="Jaymin Patel">Jaymin Patel</option>
+                  <option value="Swapna Kadam">Swapna Kadam</option>
+                  <option value="Sakshi Pujari">Sakshi Pujari</option>
+                </select>
+              </div>
+
+              <!-- Filter Status -->
+              <div class="select-wrapper-sm">
+                <select id="table-filter-status">
+                  <option value="">All Statuses</option>
+                  <option value="PASS">PASS Only</option>
+                  <option value="FAIL">FAIL Only</option>
+                </select>
+              </div>
+
+              <!-- Export Excel Button -->
+              <a href="/api/readings/export" class="btn-excel" id="export-excel-btn">
+                <i data-lucide="file-spreadsheet"></i>
+                <span>Download Excel Report</span>
+              </a>
+            </div>
+          </div>
+
+          <div class="card-content no-padding">
+            <div class="table-responsive">
+              <table id="readings-table">
+                <thead>
+                  <tr>
+                    <th data-sort="timestamp" class="sortable active-sort desc">Timestamp <i data-lucide="arrow-down-narrow-wide" class="sort-icon"></i></th>
+                    <th data-sort="batch_no" class="sortable">Batch Number <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                    <th data-sort="operator_name" class="sortable">Operator <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                    <th data-sort="ac_voltage" class="sortable">AC Voltage <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                    <th data-sort="dc_voltage" class="sortable">DC Voltage <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                    <th data-sort="current" class="sortable">Current <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                    <th data-sort="temperature" class="sortable">Temperature <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                    <th data-sort="status" class="sortable">Status <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                  </tr>
+                </thead>
+                <tbody id="table-body">
+                  <!-- Rows loaded dynamically -->
+                  <tr class="empty-state">
+                    <td colspan="8">No records available. Running simulation...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Table Pagination and Info Footer -->
+            <div class="table-pagination">
+              <div class="pagination-info">
+                Showing <span id="paginated-start">0</span> to <span id="paginated-end">0</span> of <span id="paginated-total">0</span> entries
+              </div>
+              <div class="pagination-buttons">
+                <button class="btn-pagination" id="btn-prev-page" disabled><i data-lucide="chevron-left"></i> Previous</button>
+                <span class="pagination-current-page" id="pagination-page-indicator">Page 1</span>
+                <button class="btn-pagination" id="btn-next-page" disabled>Next <i data-lucide="chevron-right"></i></button>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+      <div class="footer-left">
+        <strong>Smart PCB Meter Monitoring System</strong> | Developed Using Raspberry Pi 4, ADS1115, Python, IoT Dashboard
+      </div>
+      <div class="footer-right">
+        <span>Guide: <strong>Kiran Jadhav</strong></span>
+      </div>
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
