@@ -231,9 +231,6 @@ function showDashboardView() {
   
   // Initial historical data load
   fetchHistory();
-
-  // Fetch last known reading immediately to avoid empty placeholder values on startup
-  fetchLatestReading();
   
   // Start polling
   startDashboardPolling();
@@ -469,8 +466,8 @@ function startDashboardPolling() {
     { ref: sessionRef, event: 'value' }
   );
   
-  // We still poll charts data from SQLite history every 2 seconds to update charts
-  pollInterval = setInterval(updateChartsData, 2000);
+  // We still poll charts data from SQLite history every 20 seconds to update charts
+  pollInterval = setInterval(updateChartsData, 20000);
   
   // Initial historical data load
   fetchHistory();
@@ -696,8 +693,8 @@ function updateStatusAndAge() {
   const now = Date.now();
   const ageSeconds = Math.max(0, Math.floor((now - lastTime) / 1000));
   
-  // Online logic: age < 20 seconds and status field is ONLINE
-  const isOnline = ageSeconds < 20 && state.latestReading.status === "ONLINE";
+  // Online logic: age < 30 seconds and status field is ONLINE
+  const isOnline = ageSeconds < 30 && state.latestReading.status === "ONLINE";
   
   if (isOnline) {
     setSystemOnline();
@@ -743,39 +740,6 @@ function setSystemOffline() {
 
 // Run status updater every second
 setInterval(updateStatusAndAge, 1000);
-
-// Periodically check if system is offline, and if so, poll the local SQLite server for the last reading
-setInterval(async () => {
-  if (!state.isOnline) {
-    await fetchLatestReading();
-  }
-}, 2000);
-
-async function fetchLatestReading() {
-  try {
-    const response = await fetch('/api/readings/latest');
-    if (response.ok) {
-      const reading = await response.json();
-      if (reading) {
-        // Map SQLite fields to new Firebase format keys
-        const mappedReading = {
-          guideName: "Kiran Jadhav",
-          operatorName: reading.operator_name,
-          batchNo: reading.batch_no,
-          acVoltage: reading.ac_voltage,
-          dcVoltage: reading.dc_voltage,
-          current: reading.current,
-          temperature: reading.temperature,
-          timestamp: reading.timestamp,
-          status: "ONLINE" // When fetched from local server SQLite, treat it as ONLINE candidate
-        };
-        handleLatestTelemetry(mappedReading);
-      }
-    }
-  } catch (err) {
-    console.error('Error fetching latest reading:', err);
-  }
-}
 
 async function fetchActiveOperator() {
   try {

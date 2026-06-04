@@ -170,8 +170,8 @@ def main():
         except Exception as e:
             print(f"\033[91m[Error] Unexpected exception: {e}\033[0m")
             
-        # Poll every 2 seconds
-        time.sleep(2.0)
+        # Poll every 20 seconds
+        time.sleep(20.0)
 
 if __name__ == "__main__":
     main()
