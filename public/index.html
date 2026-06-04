@@ -12,10 +12,21 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- ApexCharts -->
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <!-- Firebase SDK Compat -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <!-- Custom CSS -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="login-view">
+
+  <!-- ==================== SPINNING LOADER OVERLAY ==================== -->
+  <div id="loader-overlay" class="loader-overlay">
+    <div class="loader-content">
+      <div class="spinner"></div>
+      <p>Connecting to PCB machine database...</p>
+    </div>
+  </div>
 
   <!-- ==================== LOGIN SCREEN ==================== -->
   <div id="login-container" class="login-container">
@@ -23,7 +34,20 @@
     <div class="login-card">
       <div class="login-header">
         <div class="logo-box">
-          <i data-lucide="cpu" class="logo-icon text-blue"></i>
+          <svg class="logo-icon text-blue multimeter-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Multimeter Body -->
+            <rect x="5" y="2" width="14" height="20" rx="3" fill="rgba(59, 130, 246, 0.1)" stroke="currentColor" />
+            <!-- Display Screen -->
+            <rect x="8" y="5" width="8" height="4" rx="1" stroke="currentColor" />
+            <path d="M10 7h4" stroke="currentColor" stroke-width="1" />
+            <!-- Rotary Dial -->
+            <circle cx="12" cy="13.5" r="2.5" stroke="currentColor" />
+            <line x1="12" y1="13.5" x2="12" y2="11.5" stroke="currentColor" />
+            <!-- Input Ports -->
+            <circle cx="9" cy="18.5" r="0.8" fill="currentColor" />
+            <circle cx="12" cy="18.5" r="0.8" fill="currentColor" />
+            <circle cx="15" cy="18.5" r="0.8" fill="currentColor" />
+          </svg>
         </div>
         <h1>Smart PCB Meter</h1>
         <p class="subtitle">Industrial Testing & Monitoring System</p>
@@ -70,12 +94,31 @@
 
   <!-- ==================== DASHBOARD SCREEN ==================== -->
   <div id="dashboard-container" class="dashboard-container">
+
+    <!-- ==================== OFFLINE ALERT BANNER ==================== -->
+    <div id="offline-banner" class="offline-banner">
+      <i data-lucide="alert-triangle"></i>
+      <span>System Offline — No readings received</span>
+    </div>
     
     <!-- Header -->
     <header class="main-header">
       <div class="header-left">
         <div class="logo-wrapper">
-          <i data-lucide="cpu" class="dashboard-logo"></i>
+          <svg class="dashboard-logo multimeter-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Multimeter Body -->
+            <rect x="5" y="2" width="14" height="20" rx="3" fill="rgba(59, 130, 246, 0.1)" stroke="currentColor" />
+            <!-- Display Screen -->
+            <rect x="8" y="5" width="8" height="4" rx="1" stroke="currentColor" />
+            <path d="M10 7h4" stroke="currentColor" stroke-width="1" />
+            <!-- Rotary Dial -->
+            <circle cx="12" cy="13.5" r="2.5" stroke="currentColor" />
+            <line x1="12" y1="13.5" x2="12" y2="11.5" stroke="currentColor" />
+            <!-- Input Ports -->
+            <circle cx="9" cy="18.5" r="0.8" fill="currentColor" />
+            <circle cx="12" cy="18.5" r="0.8" fill="currentColor" />
+            <circle cx="15" cy="18.5" r="0.8" fill="currentColor" />
+          </svg>
           <div>
             <h2>Smart PCB Meter</h2>
             <span class="header-subtitle">Industrial IoT Live telemetry</span>
@@ -136,6 +179,10 @@
           </div>
           <div class="card-content">
             <div class="operator-display">
+              <div class="meta-item">
+                <span class="label">Guide Name:</span>
+                <span class="val highlight">Kiran Jadhav</span>
+              </div>
               <div class="meta-item">
                 <span class="label">Active Operator:</span>
                 <span class="val highlight" id="active-operator-name">Pranav Argade</span>
@@ -253,12 +300,13 @@
               </div>
             </div>
             <div class="card-mid">
-              <span class="metric-value" id="val-ac-voltage">--.-</span>
+              <span class="metric-value" id="val-ac-voltage">N/A</span>
               <span class="metric-unit">V</span>
+              <span class="last-known-label">(last known)</span>
             </div>
             <div class="card-bottom">
               <div class="metric-badge status-normal" id="badge-ac-voltage">NORMAL</div>
-              <span class="metric-updated" id="time-ac-voltage">Last updated: --</span>
+              <span class="metric-updated" id="time-ac-voltage">Last updated: Never</span>
             </div>
           </div>
 
@@ -271,12 +319,13 @@
               </div>
             </div>
             <div class="card-mid">
-              <span class="metric-value" id="val-dc-voltage">--.-</span>
+              <span class="metric-value" id="val-dc-voltage">N/A</span>
               <span class="metric-unit">V</span>
+              <span class="last-known-label">(last known)</span>
             </div>
             <div class="card-bottom">
               <div class="metric-badge status-normal" id="badge-dc-voltage">NORMAL</div>
-              <span class="metric-updated" id="time-dc-voltage">Last updated: --</span>
+              <span class="metric-updated" id="time-dc-voltage">Last updated: Never</span>
             </div>
           </div>
 
@@ -289,12 +338,13 @@
               </div>
             </div>
             <div class="card-mid">
-              <span class="metric-value" id="val-current">--.---</span>
+              <span class="metric-value" id="val-current">N/A</span>
               <span class="metric-unit">A</span>
+              <span class="last-known-label">(last known)</span>
             </div>
             <div class="card-bottom">
               <div class="metric-badge status-normal" id="badge-current">NORMAL</div>
-              <span class="metric-updated" id="time-current">Last updated: --</span>
+              <span class="metric-updated" id="time-current">Last updated: Never</span>
             </div>
           </div>
 
@@ -307,15 +357,21 @@
               </div>
             </div>
             <div class="card-mid">
-              <span class="metric-value" id="val-temperature">--.-</span>
+              <span class="metric-value" id="val-temperature">N/A</span>
               <span class="metric-unit">°C</span>
+              <span class="last-known-label">(last known)</span>
             </div>
             <div class="card-bottom">
               <div class="metric-badge status-normal" id="badge-temperature">NORMAL</div>
-              <span class="metric-updated" id="time-temperature">Last updated: --</span>
+              <span class="metric-updated" id="time-temperature">Last updated: Never</span>
             </div>
           </div>
         </section>
+
+      <!-- Last Reading Time Ago Banner -->
+      <div class="last-reading-bar">
+        <span id="last-reading-time-ago">Last reading: -- seconds ago</span>
+      </div>
 
         <!-- Charts Grid Section -->
         <section class="charts-section card">
@@ -356,80 +412,51 @@
           </div>
         </section>
 
-        <!-- KPI Statistics Section -->
-        <section class="stats-section-row">
-          <!-- Total Tests KPI -->
-          <div class="kpi-mini-card">
-            <div class="kpi-icon-wrapper blue-glow">
-              <i data-lucide="folder-git"></i>
-            </div>
-            <div class="kpi-details">
-              <span class="kpi-val" id="kpi-total-tests">0</span>
-              <span class="kpi-lbl">Total Tests</span>
-            </div>
+        <!-- STATS SECTION -->
+        <section class="card stats-section" id="stats-section">
+          <div class="card-header">
+            <i data-lucide="bar-chart-3" class="card-icon"></i>
+            <h3>Session Diagnostics & Statistics (Min / Max / Avg)</h3>
+            <span class="card-header-badge">Total Readings: <span id="kpi-total-tests">0</span></span>
           </div>
-          <!-- Today's Tests KPI -->
-          <div class="kpi-mini-card">
-            <div class="kpi-icon-wrapper blue-glow">
-              <i data-lucide="calendar-check-2"></i>
-            </div>
-            <div class="kpi-details">
-              <span class="kpi-val" id="kpi-today-tests">0</span>
-              <span class="kpi-lbl">Today's Tests</span>
-            </div>
-          </div>
-          <!-- Avg AC Voltage -->
-          <div class="kpi-mini-card">
-            <div class="kpi-icon-wrapper">
-              <i data-lucide="waves"></i>
-            </div>
-            <div class="kpi-details">
-              <span class="kpi-val" id="kpi-avg-ac">0.0 V</span>
-              <span class="kpi-lbl">Avg AC Voltage</span>
-            </div>
-          </div>
-          <!-- Avg DC Voltage -->
-          <div class="kpi-mini-card">
-            <div class="kpi-icon-wrapper">
-              <i data-lucide="combine"></i>
-            </div>
-            <div class="kpi-details">
-              <span class="kpi-val" id="kpi-avg-dc">0.0 V</span>
-              <span class="kpi-lbl">Avg DC Voltage</span>
-            </div>
-          </div>
-          <!-- Avg Current -->
-          <div class="kpi-mini-card">
-            <div class="kpi-icon-wrapper">
-              <i data-lucide="gauge"></i>
-            </div>
-            <div class="kpi-details">
-              <span class="kpi-val" id="kpi-avg-current">0.0 A</span>
-              <span class="kpi-lbl">Avg Current</span>
-            </div>
-          </div>
-          <!-- Avg Temperature -->
-          <div class="kpi-mini-card">
-            <div class="kpi-icon-wrapper">
-              <i data-lucide="thermometer-snowflake"></i>
-            </div>
-            <div class="kpi-details">
-              <span class="kpi-val" id="kpi-avg-temp">0.0 °C</span>
-              <span class="kpi-lbl">Avg Temp</span>
-            </div>
-          </div>
-          <!-- Pass/Fail KPI -->
-          <div class="kpi-mini-card pass-fail-card">
-            <div class="kpi-details split">
-              <div>
-                <span class="kpi-val text-green" id="kpi-pass-count">0</span>
-                <span class="kpi-lbl">Passed</span>
-              </div>
-              <div class="vertical-pipe"></div>
-              <div>
-                <span class="kpi-val text-red" id="kpi-fail-count">0</span>
-                <span class="kpi-lbl">Failed</span>
-              </div>
+          <div class="card-content">
+            <div class="stats-table-responsive">
+              <table class="stats-table">
+                <thead>
+                  <tr>
+                    <th>Sensor Parameter</th>
+                    <th>Minimum</th>
+                    <th>Maximum</th>
+                    <th>Average</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="param-name-cell"><span class="color-dot ac-dot"></span> AC Voltage</td>
+                    <td id="stats-ac-min">N/A</td>
+                    <td id="stats-ac-max">N/A</td>
+                    <td id="stats-ac-avg" class="highlight-val">N/A</td>
+                  </tr>
+                  <tr>
+                    <td class="param-name-cell"><span class="color-dot dc-dot"></span> DC Voltage</td>
+                    <td id="stats-dc-min">N/A</td>
+                    <td id="stats-dc-max">N/A</td>
+                    <td id="stats-dc-avg" class="highlight-val">N/A</td>
+                  </tr>
+                  <tr>
+                    <td class="param-name-cell"><span class="color-dot curr-dot"></span> Current</td>
+                    <td id="stats-current-min">N/A</td>
+                    <td id="stats-current-max">N/A</td>
+                    <td id="stats-current-avg" class="highlight-val">N/A</td>
+                  </tr>
+                  <tr>
+                    <td class="param-name-cell"><span class="color-dot temp-dot"></span> Temperature</td>
+                    <td id="stats-temp-min">N/A</td>
+                    <td id="stats-temp-max">N/A</td>
+                    <td id="stats-temp-avg" class="highlight-val">N/A</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -531,6 +558,6 @@
 
   </div>
 
-  <script type="module" src="app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

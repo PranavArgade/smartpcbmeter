@@ -1,22 +1,50 @@
-// Import Firebase SDKs
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-
 // Firebase Configurations
 const firebaseConfig = {
-  apiKey: "AIzaSyBgZPgRrBS4m47iSfymLM15qzehxPZyvG4",
-  authDomain: "pcb-meter.firebaseapp.com",
-  databaseURL: "https://pcb-meter-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "pcb-meter",
-  storageBucket: "pcb-meter.firebasestorage.app",
-  messagingSenderId: "485431759807",
-  appId: "1:485431759807:web:f5e14201a93117ef93470a",
-  measurementId: "G-R95VVVLHQR"
+  apiKey: "AIzaSyBWrhNr-uI5iqWB8ijgoR0VDaF2zBrArwo",
+  authDomain: "smart-pcb-tester.firebaseapp.com",
+  projectId: "smart-pcb-tester",
+  storageBucket: "smart-pcb-tester.firebasestorage.app",
+  messagingSenderId: "79463446387",
+  appId: "1:79463446387:web:087d22f90e192ec6ee7706",
+  measurementId: "G-T6L8E4LTNJ",
+  databaseURL: "https://smart-pcb-tester-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
-// Initialize Firebase
-const firebaseApp = initializeApp(firebaseConfig);
-const firebaseDb = getDatabase(firebaseApp);
+// Initialize Firebase using compat SDK
+firebase.initializeApp(firebaseConfig);
+const firebaseDb = firebase.database();
+
+// Helper to parse a UTC timestamp from database/Firebase safely in local time
+function parseUTCTimestamp(tsString) {
+  if (!tsString) return new Date();
+  if (typeof tsString !== 'string') {
+    return new Date(tsString);
+  }
+  if (tsString.includes('Z') || tsString.includes('+') || (tsString.includes('T') && tsString.includes('-') && tsString.indexOf('-') !== tsString.lastIndexOf('-'))) {
+    return new Date(tsString);
+  }
+  let formatted = tsString.trim().replace(' ', 'T');
+  if (!formatted.includes('T')) {
+    return new Date(tsString);
+  }
+  if (!formatted.endsWith('Z')) {
+    formatted += 'Z';
+  }
+  return new Date(formatted);
+}
+
+// Helper to format Date object as DD/MM/YYYY HH:MM:SS in local timezone (IST)
+function formatLocalDateTime(date) {
+  if (!date || isNaN(date.getTime())) return '--/--/---- --:--:--';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+}
+
 
 // ==========================================================================
 // STATE MANAGEMENT
@@ -27,6 +55,7 @@ const state = {
   activeBatch: 'B-2026-06-001',
   lastReadingId: null,
   lastReadingTime: null,
+  latestReading: null, // Keep track of the full latest reading for status & age updates
   isOnline: false,
   theme: localStorage.getItem('pcb_theme') || 'dark',
   
@@ -176,10 +205,23 @@ function applyTheme(themeName) {
 function showLoginView() {
   DOM.body.className = 'login-view';
   stopDashboardPolling();
+  
+  // Hide loader so login interface is visible
+  const loader = document.getElementById('loader-overlay');
+  if (loader) {
+    loader.classList.add('hidden');
+  }
 }
 
 function showDashboardView() {
   DOM.body.className = 'dashboard-view';
+  
+  // Show loader overlay until we get Firebase data
+  const loader = document.getElementById('loader-overlay');
+  if (loader) {
+    loader.classList.remove('hidden');
+    loader.querySelector('p').textContent = 'Connecting to PCB machine database...';
+  }
   
   // Load initial settings
   fetchActiveOperator();
@@ -189,6 +231,9 @@ function showDashboardView() {
   
   // Initial historical data load
   fetchHistory();
+
+  // Fetch last known reading immediately to avoid empty placeholder values on startup
+  fetchLatestReading();
   
   // Start polling
   startDashboardPolling();
@@ -290,7 +335,7 @@ function initCharts() {
   // AC Voltage Chart
   charts.ac = new ApexCharts(document.querySelector("#chart-ac-voltage"), {
     ...baseOptions,
-    colors: ['#3b82f6'],
+    colors: ['#ef4444'],
     series: [{ name: 'AC Voltage', data: [] }],
     yaxis: { min: 180, max: 260, labels: { formatter: (val) => `${val.toFixed(0)}V` } }
   });
@@ -299,7 +344,7 @@ function initCharts() {
   // DC Voltage Chart
   charts.dc = new ApexCharts(document.querySelector("#chart-dc-voltage"), {
     ...baseOptions,
-    colors: ['#a855f7'],
+    colors: ['#3b82f6'],
     series: [{ name: 'DC Voltage', data: [] }],
     yaxis: { min: 0, max: 15, labels: { formatter: (val) => `${val.toFixed(1)}V` } }
   });
@@ -317,7 +362,7 @@ function initCharts() {
   // Temperature Chart
   charts.temp = new ApexCharts(document.querySelector("#chart-temperature"), {
     ...baseOptions,
-    colors: ['#f97316'],
+    colors: ['#22c55e'],
     series: [{ name: 'Temperature', data: [] }],
     yaxis: { min: 10, max: 70, labels: { formatter: (val) => `${val.toFixed(0)}°C` } }
   });
@@ -335,7 +380,7 @@ async function updateChartsData() {
     
     if (data.length === 0) return;
 
-    const timestamps = data.map(r => new Date(r.timestamp).toLocaleTimeString());
+    const timestamps = data.map(r => parseUTCTimestamp(r.timestamp).toLocaleTimeString('en-IN', { hour12: false }));
     const acVals = data.map(r => r.ac_voltage);
     const dcVals = data.map(r => r.dc_voltage);
     const currentVals = data.map(r => r.current);
@@ -367,36 +412,62 @@ let firebaseListeners = [];
 function startDashboardPolling() {
   stopDashboardPolling();
   
-  // Set up Firebase Realtime Database Listeners
-  const latestReadingRef = ref(firebaseDb, 'latest_reading');
-  const statsRef = ref(firebaseDb, 'stats');
-  const activeOperatorRef = ref(firebaseDb, 'active_operator');
-  
+  // Hide loader once the first data snapshots are received
+  let receivedLatest = false;
+  let receivedStats = false;
+  let receivedSession = false;
+  const checkHideLoader = () => {
+    if (receivedLatest || receivedStats || receivedSession) {
+      const loader = document.getElementById('loader-overlay');
+      if (loader) {
+        loader.classList.add('hidden');
+      }
+    }
+  };
+
   // 1. Listen to Latest Reading
-  const unsubscribeLatest = onValue(latestReadingRef, (snapshot) => {
+  const latestReadingRef = firebaseDb.ref('latest_reading');
+  latestReadingRef.on('value', (snapshot) => {
     const reading = snapshot.val();
+    receivedLatest = true;
+    checkHideLoader();
     if (reading) {
       handleLatestTelemetry(reading);
+    } else {
+      handleEmptyTelemetry();
     }
   });
   
   // 2. Listen to Stats
-  const unsubscribeStats = onValue(statsRef, (snapshot) => {
+  const statsRef = firebaseDb.ref('stats');
+  statsRef.on('value', (snapshot) => {
     const stats = snapshot.val();
+    receivedStats = true;
+    checkHideLoader();
     if (stats) {
       handleStatsUpdate(stats);
+    } else {
+      handleStatsUpdate(null);
     }
   });
   
-  // 3. Listen to Active Operator
-  const unsubscribeOperator = onValue(activeOperatorRef, (snapshot) => {
-    const op = snapshot.val();
-    if (op) {
-      handleOperatorUpdate(op);
+  // 3. Listen to Session
+  const sessionRef = firebaseDb.ref('session');
+  sessionRef.on('value', (snapshot) => {
+    const session = snapshot.val();
+    receivedSession = true;
+    checkHideLoader();
+    if (session) {
+      handleOperatorUpdate(session);
     }
   });
   
-  firebaseListeners.push(unsubscribeLatest, unsubscribeStats, unsubscribeOperator);
+  // Store refs and handlers to unsubscribe later
+  firebaseListeners.push(
+    { ref: latestReadingRef, event: 'value' },
+    { ref: statsRef, event: 'value' },
+    { ref: sessionRef, event: 'value' }
+  );
   
   // We still poll charts data from SQLite history every 2 seconds to update charts
   pollInterval = setInterval(updateChartsData, 2000);
@@ -407,9 +478,9 @@ function startDashboardPolling() {
 
 function stopDashboardPolling() {
   // Unsubscribe from Firebase listeners
-  firebaseListeners.forEach(unsubscribe => {
+  firebaseListeners.forEach(listener => {
     try {
-      unsubscribe();
+      listener.ref.off(listener.event);
     } catch (e) {
       console.error(e);
     }
@@ -423,74 +494,178 @@ function stopDashboardPolling() {
 }
 
 function handleLatestTelemetry(reading) {
-  // Update live metrics cards
-  DOM.valAC.textContent = reading.ac_voltage.toFixed(1);
-  DOM.valDC.textContent = reading.dc_voltage.toFixed(2);
-  DOM.valCurrent.textContent = reading.current.toFixed(3);
-  DOM.valTemp.textContent = reading.temperature.toFixed(1);
+  if (!reading) return;
+
+  // Store in state so the status checker can calculate age in real-time
+  state.latestReading = reading;
+
+  // Extract variables (support both new camelCase and fallback snake_case)
+  const ac = reading.acVoltage !== undefined ? reading.acVoltage : reading.ac_voltage;
+  const dc = reading.dcVoltage !== undefined ? reading.dcVoltage : reading.dc_voltage;
+  const current = reading.current;
+  const temp = reading.temperature;
+  const status = reading.status;
+  const batchNo = reading.batchNo !== undefined ? reading.batchNo : reading.batch_no;
+  const id = reading.id;
+
+  // Update live metrics cards safely
+  DOM.valAC.textContent = typeof ac === 'number' ? ac.toFixed(1) : (ac !== undefined && ac !== null && !isNaN(parseFloat(ac)) ? parseFloat(ac).toFixed(1) : 'N/A');
+  DOM.valDC.textContent = typeof dc === 'number' ? dc.toFixed(2) : (dc !== undefined && dc !== null && !isNaN(parseFloat(dc)) ? parseFloat(dc).toFixed(2) : 'N/A');
+  DOM.valCurrent.textContent = typeof current === 'number' ? current.toFixed(3) : (current !== undefined && current !== null && !isNaN(parseFloat(current)) ? parseFloat(current).toFixed(3) : 'N/A');
+  DOM.valTemp.textContent = typeof temp === 'number' ? temp.toFixed(1) : (temp !== undefined && temp !== null && !isNaN(parseFloat(temp)) ? parseFloat(temp).toFixed(1) : 'N/A');
   
   // Check parameters ranges for metric card badges
-  updateMetricBadge(DOM.badgeAC, reading.ac_voltage, 215, 245, 'V');
-  updateMetricBadge(DOM.badgeDC, (reading.dc_voltage >= 4.5 && reading.dc_voltage <= 5.5) || (reading.dc_voltage >= 11.0 && reading.dc_voltage <= 12.8), true, true, '');
-  updateMetricBadge(DOM.badgeCurrent, reading.current, 0.1, 3.5, 'A');
-  updateMetricBadge(DOM.badgeTemp, reading.temperature, -100, 50, '°C');
+  updateMetricBadge(DOM.badgeAC, ac, 215, 245, 'V');
+  updateMetricBadge(DOM.badgeDC, (dc >= 4.5 && dc <= 5.5) || (dc >= 11.0 && dc <= 12.8), true, true, '');
+  updateMetricBadge(DOM.badgeCurrent, current, 0.1, 3.5, 'A');
+  updateMetricBadge(DOM.badgeTemp, temp, -100, 50, '°C');
 
-  const updateTimeStr = new Date(reading.timestamp).toLocaleTimeString();
+  // Convert UTC timestamp to local IST timezone and format it
+  const ts = reading.timestamp;
+  let updateTimeStr = '--:--:--';
+  if (ts) {
+    const localDate = parseUTCTimestamp(ts);
+    updateTimeStr = localDate.toLocaleTimeString('en-IN', { hour12: false });
+  }
+  
   DOM.timeAC.textContent = `Last updated: ${updateTimeStr}`;
   DOM.timeDC.textContent = `Last updated: ${updateTimeStr}`;
   DOM.timeCurrent.textContent = `Last updated: ${updateTimeStr}`;
   DOM.timeTemp.textContent = `Last updated: ${updateTimeStr}`;
   
-  // Keep track of online/offline status
-  state.lastReadingTime = new Date(reading.timestamp);
-  checkSystemStatusOnline();
+  // Keep track of online/offline status (evaluated in our interval)
+  state.lastReadingTime = ts ? parseUTCTimestamp(ts) : new Date();
+  
+  // Run immediate status/age update
+  updateStatusAndAge();
 
-  // Check if it's a new reading to post to the notifications panel
-  if (state.lastReadingId !== reading.id) {
-    state.lastReadingId = reading.id;
-    addNotification(`New Reading Received: ID #${reading.id} (AC: ${reading.ac_voltage.toFixed(1)}V, DC: ${reading.dc_voltage.toFixed(1)}V) [Firebase RTDB]`, 'info');
+  // Unique reading ID check (use timestamp or id)
+  const uniqueId = id || ts;
+  if (uniqueId !== undefined && state.lastReadingId !== uniqueId) {
+    state.lastReadingId = uniqueId;
     
-    if (reading.status === 'PASS') {
-      addNotification(`Pass Result: Batch ${reading.batch_no} passed test.`, 'pass');
-    } else {
-      addNotification(`Fail Result: Anomaly detected on Batch ${reading.batch_no}!`, 'fail');
-    }
-
+    const displayAc = typeof ac === 'number' ? ac.toFixed(1) : '--.-';
+    const displayDc = typeof dc === 'number' ? dc.toFixed(1) : '--.-';
+    addNotification(`New Reading Received: AC: ${displayAc}V, DC: ${displayDc}V [Firebase RTDB]`, 'info');
+    
     // Increment Operator readings collected counter in real-time
     const countBadge = document.getElementById('operator-readings-count');
-    countBadge.textContent = parseInt(countBadge.textContent) + 1;
+    if (countBadge) {
+      countBadge.textContent = parseInt(countBadge.textContent || '0') + 1;
+    }
 
     // Reload history table to show new entry at the top
     fetchHistory();
   }
 }
 
+function handleEmptyTelemetry() {
+  state.latestReading = null;
+  state.lastReadingTime = null;
+  
+  DOM.valAC.textContent = 'N/A';
+  DOM.valDC.textContent = 'N/A';
+  DOM.valCurrent.textContent = 'N/A';
+  DOM.valTemp.textContent = 'N/A';
+  
+  DOM.badgeAC.textContent = 'NORMAL';
+  DOM.badgeAC.className = 'metric-badge status-normal';
+  DOM.badgeDC.textContent = 'NORMAL';
+  DOM.badgeDC.className = 'metric-badge status-normal';
+  DOM.badgeCurrent.textContent = 'NORMAL';
+  DOM.badgeCurrent.className = 'metric-badge status-normal';
+  DOM.badgeTemp.textContent = 'NORMAL';
+  DOM.badgeTemp.className = 'metric-badge status-normal';
+  
+  DOM.timeAC.textContent = 'Last updated: Never';
+  DOM.timeDC.textContent = 'Last updated: Never';
+  DOM.timeCurrent.textContent = 'Last updated: Never';
+  DOM.timeTemp.textContent = 'Last updated: Never';
+  
+  updateStatusAndAge();
+}
+
 function handleStatsUpdate(stats) {
-  DOM.kpiTotalTests.textContent = stats.totalTests;
-  DOM.kpiTodayTests.textContent = stats.todayTests;
-  DOM.kpiAvgAC.textContent = `${stats.avgAcVoltage.toFixed(1)} V`;
-  DOM.kpiAvgDC.textContent = `${stats.avgDcVoltage.toFixed(2)} V`;
-  DOM.kpiAvgCurrent.textContent = `${stats.avgCurrent.toFixed(3)} A`;
-  DOM.kpiAvgTemp.textContent = `${stats.avgTemperature.toFixed(1)} °C`;
-  DOM.kpiPassCount.textContent = stats.passCount;
-  DOM.kpiFailCount.textContent = stats.failCount;
+  if (!stats) {
+    const totalTestsEl = document.getElementById('kpi-total-tests');
+    if (totalTestsEl) totalTestsEl.textContent = '0';
+    setCell('stats-ac-min', null, 1);
+    setCell('stats-ac-max', null, 1);
+    setCell('stats-ac-avg', null, 1);
+    setCell('stats-dc-min', null, 2);
+    setCell('stats-dc-max', null, 2);
+    setCell('stats-dc-avg', null, 2);
+    setCell('stats-current-min', null, 3);
+    setCell('stats-current-max', null, 3);
+    setCell('stats-current-avg', null, 3);
+    setCell('stats-temp-min', null, 1);
+    setCell('stats-temp-max', null, 1);
+    setCell('stats-temp-avg', null, 1);
+    return;
+  }
+
+  // Update total readings count in badge
+  const totalTestsEl = document.getElementById('kpi-total-tests');
+  if (totalTestsEl) {
+    totalTestsEl.textContent = stats.totalReadings !== undefined ? stats.totalReadings : (stats.totalTests !== undefined ? stats.totalTests : 0);
+  }
+
+  // Update Min/Max/Avg table cells
+  const setCell = (id, val, dec, unit = '') => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = (typeof val === 'number' && !isNaN(val)) ? `${val.toFixed(dec)}${unit}` : 'N/A';
+    }
+  };
+
+  // AC Voltage stats
+  const ac = stats.acVoltage || {};
+  setCell('stats-ac-min', ac.min, 1, ' V');
+  setCell('stats-ac-max', ac.max, 1, ' V');
+  setCell('stats-ac-avg', ac.avg, 1, ' V');
+
+  // DC Voltage stats
+  const dc = stats.dcVoltage || {};
+  setCell('stats-dc-min', dc.min, 2, ' V');
+  setCell('stats-dc-max', dc.max, 2, ' V');
+  setCell('stats-dc-avg', dc.avg, 2, ' V');
+
+  // Current stats
+  const curr = stats.current || {};
+  setCell('stats-current-min', curr.min, 3, ' A');
+  setCell('stats-current-max', curr.max, 3, ' A');
+  setCell('stats-current-avg', curr.avg, 3, ' A');
+
+  // Temperature stats
+  const temp = stats.temperature || {};
+  setCell('stats-temp-min', temp.min, 1, ' °C');
+  setCell('stats-temp-max', temp.max, 1, ' °C');
+  setCell('stats-temp-avg', temp.avg, 1, ' °C');
 }
 
 function handleOperatorUpdate(op) {
-  state.activeOperator = op.operatorName;
-  state.activeBatch = op.batchNo;
+  const operatorName = op.operatorName || op.operator_name || 'Argade Pranav';
+  const batchNo = op.batchNo || op.batch_no || 'B-2026-06-001';
+  const readingsCount = op.readingsCount !== undefined ? op.readingsCount : 0;
   
-  DOM.activeOperatorName.textContent = op.operatorName;
-  DOM.activeOperatorHeader.textContent = op.operatorName;
-  DOM.activeBatchNumber.textContent = op.batchNo;
-  DOM.operatorReadingsCount.textContent = op.readingsCount;
+  state.activeOperator = operatorName;
+  state.activeBatch = batchNo;
   
-  const loginDate = new Date(op.loginTime);
-  DOM.operatorLoginTime.textContent = loginDate.toLocaleTimeString();
+  DOM.activeOperatorName.textContent = operatorName;
+  DOM.activeOperatorHeader.textContent = operatorName;
+  DOM.activeBatchNumber.textContent = batchNo;
+  DOM.operatorReadingsCount.textContent = readingsCount;
+  
+  // Format Login Time to DD/MM/YYYY HH:MM:SS in local timezone
+  if (op.loginTime) {
+    DOM.operatorLoginTime.textContent = formatLocalDateTime(parseUTCTimestamp(op.loginTime));
+  } else {
+    DOM.operatorLoginTime.textContent = '--/--/---- --:--:--';
+  }
   
   // Set inputs value
-  DOM.operatorSelect.value = op.operatorName;
-  DOM.batchInput.value = op.batchNo;
+  DOM.operatorSelect.value = operatorName;
+  DOM.batchInput.value = batchNo;
 }
 
 function updateMetricBadge(badgeEl, val, minOrBool, max, unit) {
@@ -510,42 +685,97 @@ function updateMetricBadge(badgeEl, val, minOrBool, max, unit) {
   }
 }
 
-function checkSystemStatusOnline() {
-  if (!state.lastReadingTime) {
+function updateStatusAndAge() {
+  if (!state.latestReading) {
     setSystemOffline();
+    document.getElementById('last-reading-time-ago').textContent = "Last reading: Never";
     return;
   }
-
-  const secondsDiff = (new Date() - state.lastReadingTime) / 1000;
   
-  if (secondsDiff > 30) {
-    if (state.isOnline) {
-      setSystemOffline();
-    }
+  const lastTime = parseUTCTimestamp(state.latestReading.timestamp).getTime();
+  const now = Date.now();
+  const ageSeconds = Math.max(0, Math.floor((now - lastTime) / 1000));
+  
+  // Online logic: age < 20 seconds and status field is ONLINE
+  const isOnline = ageSeconds < 20 && state.latestReading.status === "ONLINE";
+  
+  if (isOnline) {
+    setSystemOnline();
   } else {
-    if (!state.isOnline) {
-      setSystemOnline();
-    }
+    setSystemOffline();
   }
+  
+  document.getElementById('last-reading-time-ago').textContent = `Last reading: ${ageSeconds} seconds ago`;
 }
 
 // Status transitions
 function setSystemOnline() {
+  if (state.isOnline) return;
   state.isOnline = true;
   DOM.systemStatus.className = 'status-pill status-online';
-  DOM.systemStatus.querySelector('.status-text').textContent = 'SYSTEM ONLINE';
-  addNotification('System Status: ONLINE. Raspberry Pi data is active.', 'pass');
+  DOM.systemStatus.querySelector('.pulse-dot').style.display = 'inline-block';
+  DOM.systemStatus.querySelector('.status-text').textContent = '● ONLINE';
+  document.getElementById('offline-banner').classList.remove('active');
+  
+  // Remove greyed-out state from cards
+  document.querySelectorAll('.metric-card').forEach(card => {
+    card.classList.remove('offline');
+  });
+  
+  addNotification('System Status: ONLINE. Live telemetry is active.', 'pass');
 }
 
 function setSystemOffline() {
+  if (!state.isOnline && state.isOnline !== undefined) return;
   state.isOnline = false;
   DOM.systemStatus.className = 'status-pill status-offline';
-  DOM.systemStatus.querySelector('.status-text').textContent = 'SYSTEM OFFLINE';
-  addNotification('System Status: OFFLINE. No data received from Raspberry Pi for >30s.', 'fail');
+  DOM.systemStatus.querySelector('.pulse-dot').style.display = 'none';
+  DOM.systemStatus.querySelector('.status-text').textContent = '● OFFLINE';
+  document.getElementById('offline-banner').classList.add('active');
+  
+  // Apply greyed-out state to cards
+  document.querySelectorAll('.metric-card').forEach(card => {
+    card.classList.add('offline');
+  });
+  
+  addNotification('System Status: OFFLINE. System is disconnected or readings stopped.', 'fail');
 }
 
-// Periodically evaluate offline status (even if no telemetry comes in to update clock diff)
-setInterval(checkSystemStatusOnline, 5000);
+// Run status updater every second
+setInterval(updateStatusAndAge, 1000);
+
+// Periodically check if system is offline, and if so, poll the local SQLite server for the last reading
+setInterval(async () => {
+  if (!state.isOnline) {
+    await fetchLatestReading();
+  }
+}, 2000);
+
+async function fetchLatestReading() {
+  try {
+    const response = await fetch('/api/readings/latest');
+    if (response.ok) {
+      const reading = await response.json();
+      if (reading) {
+        // Map SQLite fields to new Firebase format keys
+        const mappedReading = {
+          guideName: "Kiran Jadhav",
+          operatorName: reading.operator_name,
+          batchNo: reading.batch_no,
+          acVoltage: reading.ac_voltage,
+          dcVoltage: reading.dc_voltage,
+          current: reading.current,
+          temperature: reading.temperature,
+          timestamp: reading.timestamp,
+          status: "ONLINE" // When fetched from local server SQLite, treat it as ONLINE candidate
+        };
+        handleLatestTelemetry(mappedReading);
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching latest reading:', err);
+  }
+}
 
 async function fetchActiveOperator() {
   try {
@@ -605,7 +835,7 @@ function renderTable(data) {
   }
   
   DOM.tableBody.innerHTML = data.map(row => {
-    const timestampStr = new Date(row.timestamp).toLocaleString();
+    const timestampStr = formatLocalDateTime(parseUTCTimestamp(row.timestamp));
     const statusClass = row.status.toLowerCase() === 'pass' ? 'pass' : 'fail';
     
     return `
@@ -661,6 +891,12 @@ function setupEventListeners() {
     const email = DOM.emailInput.value.trim();
     const password = DOM.passwordInput.value;
     
+    const loader = document.getElementById('loader-overlay');
+    if (loader) {
+      loader.classList.remove('hidden');
+      loader.querySelector('p').textContent = 'Authenticating operator...';
+    }
+    
     try {
       const response = await fetch('/api/login', {
         method: 'POST',
@@ -682,9 +918,11 @@ function setupEventListeners() {
         
         showDashboardView();
       } else {
+        if (loader) loader.classList.add('hidden');
         alert(result.message || 'Login failed');
       }
     } catch (err) {
+      if (loader) loader.classList.add('hidden');
       console.error('Error logging in:', err);
       alert('Network error connecting to verification server.');
     }

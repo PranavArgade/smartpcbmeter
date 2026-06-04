@@ -474,6 +474,9 @@ body.dashboard-view #dashboard-container { display: flex; }
   border: 1px solid rgba(239, 68, 68, 0.25);
   box-shadow: 0 0 10px rgba(239, 68, 68, 0.1);
 }
+.status-offline .pulse-dot {
+  animation: none;
+}
 
 .pulse-dot {
   width: 8px;
@@ -958,9 +961,17 @@ body.dashboard-view #dashboard-container { display: flex; }
 
 .metric-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(59, 130, 246, 0.2);
-  box-shadow: var(--glow-blue);
 }
+
+#card-ac-voltage { border-top: 4px solid #ef4444; }
+#card-dc-voltage { border-top: 4px solid #3b82f6; }
+#card-current { border-top: 4px solid #eab308; }
+#card-temperature { border-top: 4px solid #22c55e; }
+
+#card-ac-voltage:hover { border-color: rgba(239, 68, 68, 0.35); box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); }
+#card-dc-voltage:hover { border-color: rgba(59, 130, 246, 0.35); box-shadow: 0 0 20px rgba(59, 130, 246, 0.2); }
+#card-current:hover { border-color: rgba(234, 179, 8, 0.35); box-shadow: 0 0 20px rgba(234, 179, 8, 0.2); }
+#card-temperature:hover { border-color: rgba(34, 197, 94, 0.35); box-shadow: 0 0 20px rgba(34, 197, 94, 0.2); }
 
 .card-top {
   display: flex;
@@ -985,10 +996,10 @@ body.dashboard-view #dashboard-container { display: flex; }
   justify-content: center;
 }
 
-.ac-box { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.dc-box { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+.ac-box { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.dc-box { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
 .current-box { background: rgba(234, 179, 8, 0.1); color: #eab308; }
-.temp-box { background: rgba(249, 115, 22, 0.1); color: #f97316; }
+.temp-box { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
 
 .metric-icon {
   width: 18px;
@@ -1003,7 +1014,7 @@ body.dashboard-view #dashboard-container { display: flex; }
 
 .metric-value {
   font-family: var(--font-heading);
-  font-size: 32px;
+  font-size: clamp(2.5rem, 5.5vw, 2.9rem);
   font-weight: 800;
   line-height: 1;
   letter-spacing: -1px;
@@ -1410,6 +1421,17 @@ tbody tr:hover {
 .main-footer strong {
   color: var(--text-secondary);
 }
+.multimeter-logo {
+  transition: transform var(--transition-normal);
+}
+.logo-box:hover .multimeter-logo {
+  transform: rotate(-10deg) scale(1.05);
+}
+.dashboard-logo.multimeter-logo {
+  width: 32px;
+  height: 32px;
+  color: var(--color-brand);
+}
 
 /* ==========================================================================
    KEYFRAME ANIMATIONS
@@ -1532,7 +1554,32 @@ tbody tr:hover {
 
 @media (max-width: 480px) {
   .metrics-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .metric-card {
+    padding: 12px;
+    min-height: 130px;
+  }
+  .metric-value {
+    font-size: clamp(1.6rem, 7vw, 2.0rem);
+  }
+  .metric-unit {
+    font-size: 13px;
+  }
+  .metric-label {
+    font-size: 11px;
+  }
+  .metric-icon-box {
+    width: 28px;
+    height: 28px;
+  }
+  .metric-icon {
+    width: 14px;
+    height: 14px;
+  }
+  .metric-card.offline .last-known-label {
+    font-size: 9px;
   }
   .stats-section-row {
     grid-template-columns: 1fr;
@@ -1544,3 +1591,134 @@ tbody tr:hover {
     padding: 24px;
   }
 }
+
+/* Loader Overlay */
+.loader-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  transition: opacity var(--transition-normal), visibility var(--transition-normal);
+}
+.loader-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+.loader-content {
+  text-align: center;
+}
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--color-brand);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Offline Alert Banner */
+.offline-banner {
+  background: var(--color-fail);
+  color: #fff;
+  padding: 10px 24px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
+  z-index: 101;
+}
+.offline-banner.active {
+  display: flex;
+}
+
+/* Greyed-out sensor card status when offline */
+.metric-card.offline {
+  opacity: 0.65;
+  filter: grayscale(80%);
+  border-color: var(--border-color) !important;
+}
+.metric-card .last-known-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-left: 6px;
+  display: none;
+}
+.metric-card.offline .last-known-label {
+  display: inline;
+}
+
+/* Stats Table Layout */
+.stats-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.stats-table th, .stats-table td {
+  padding: 14px 20px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+}
+.stats-table th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-family: var(--font-heading);
+}
+.stats-table tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+.stats-table td.highlight-val {
+  font-weight: 700;
+  color: var(--color-brand);
+}
+.param-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+.color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.ac-dot { background-color: #ef4444; }
+.dc-dot { background-color: #3b82f6; }
+.curr-dot { background-color: #eab308; }
+.temp-dot { background-color: #22c55e; }
+
+/* Last Reading Bar */
+.last-reading-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 24px;
+}
+

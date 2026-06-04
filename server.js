@@ -4,7 +4,7 @@ const path = require('path');
 const xlsx = require('xlsx');
 const dbOperations = require('./database');
 
-const FIREBASE_DB_URL = "https://pcb-meter-default-rtdb.asia-southeast1.firebasedatabase.app";
+const FIREBASE_DB_URL = "https://smart-pcb-tester-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 async function syncToFirebase(nodePath, data) {
   try {
@@ -57,8 +57,29 @@ app.post('/api/operator/select', async (req, res) => {
     }
     const updated = await dbOperations.setActiveOperator(operatorName, batchNo);
     
-    // Sync operator details to Firebase Realtime Database
-    syncToFirebase('active_operator', updated);
+    // Sync operator details and stats to Firebase Realtime Database
+    if (updated) {
+      await syncToFirebase('session', {
+        guideName: "Kiran Jadhav",
+        operatorName: updated.operatorName,
+        batchNo: updated.batchNo,
+        loginTime: updated.loginTime,
+        lastSeen: new Date().toISOString(),
+        status: "ONLINE",
+        readingsCount: updated.readingsCount
+      });
+      const stats = await dbOperations.getStats();
+      await syncToFirebase('stats', {
+        guideName: "Kiran Jadhav",
+        operatorName: updated.operatorName,
+        batchNo: updated.batchNo,
+        totalReadings: stats.totalTests,
+        acVoltage: stats.acVoltage,
+        dcVoltage: stats.dcVoltage,
+        current: stats.current,
+        temperature: stats.temperature
+      });
+    }
 
     res.json({ success: true, data: updated });
   } catch (error) {
@@ -102,12 +123,42 @@ app.post('/api/readings', async (req, res) => {
         const latest = await dbOperations.getLatestReading();
         const stats = await dbOperations.getStats();
         const active = await dbOperations.getActiveOperator();
-        
-        await Promise.all([
-          syncToFirebase('latest_reading', latest),
-          syncToFirebase('stats', stats),
-          syncToFirebase('active_operator', active)
-        ]);
+        if (latest) {
+          await syncToFirebase('latest_reading', {
+            guideName: "Kiran Jadhav",
+            operatorName: latest.operator_name,
+            batchNo: latest.batch_no,
+            acVoltage: latest.ac_voltage,
+            dcVoltage: latest.dc_voltage,
+            current: latest.current,
+            temperature: latest.temperature,
+            timestamp: latest.timestamp,
+            status: "ONLINE"
+          });
+        }
+        if (active) {
+          await syncToFirebase('session', {
+            guideName: "Kiran Jadhav",
+            operatorName: active.operatorName,
+            batchNo: active.batchNo,
+            loginTime: active.loginTime,
+            lastSeen: new Date().toISOString(),
+            status: "ONLINE",
+            readingsCount: active.readingsCount
+          });
+        }
+        if (stats) {
+          await syncToFirebase('stats', {
+            guideName: "Kiran Jadhav",
+            operatorName: active ? active.operatorName : "Argade Pranav",
+            batchNo: active ? active.batchNo : "B-2026-06-001",
+            totalReadings: stats.totalTests,
+            acVoltage: stats.acVoltage,
+            dcVoltage: stats.dcVoltage,
+            current: stats.current,
+            temperature: stats.temperature
+          });
+        }
       } catch (syncErr) {
         console.error('Error in post-insert Firebase sync:', syncErr.message);
       }
@@ -224,17 +275,104 @@ app.listen(PORT, () => {
   (async () => {
     try {
       const latest = await dbOperations.getLatestReading();
-      if (latest) await syncToFirebase('latest_reading', latest);
-      
       const stats = await dbOperations.getStats();
-      await syncToFirebase('stats', stats);
-      
       const active = await dbOperations.getActiveOperator();
-      await syncToFirebase('active_operator', active);
+      
+      if (latest) {
+        await syncToFirebase('latest_reading', {
+          guideName: "Kiran Jadhav",
+          operatorName: latest.operator_name,
+          batchNo: latest.batch_no,
+          acVoltage: latest.ac_voltage,
+          dcVoltage: latest.dc_voltage,
+          current: latest.current,
+          temperature: latest.temperature,
+          timestamp: latest.timestamp,
+          status: "ONLINE"
+        });
+      } else {
+        await syncToFirebase('latest_reading', null);
+      }
+      if (active) {
+        await syncToFirebase('session', {
+          guideName: "Kiran Jadhav",
+          operatorName: active.operatorName,
+          batchNo: active.batchNo,
+          loginTime: active.loginTime,
+          lastSeen: new Date().toISOString(),
+          status: "ONLINE",
+          readingsCount: active.readingsCount
+        });
+      }
+      if (stats && stats.totalTests > 0) {
+        await syncToFirebase('stats', {
+          guideName: "Kiran Jadhav",
+          operatorName: active ? active.operatorName : "Argade Pranav",
+          batchNo: active ? active.batchNo : "B-2026-06-001",
+          totalReadings: stats.totalTests,
+          acVoltage: stats.acVoltage,
+          dcVoltage: stats.dcVoltage,
+          current: stats.current,
+          temperature: stats.temperature
+        });
+      } else {
+        await syncToFirebase('stats', null);
+      }
       
       console.log('Firebase Realtime Database initial state synced successfully.');
     } catch (err) {
       console.error('Error during initial Firebase sync:', err.message);
     }
   })();
+});
+
+// Shutdown helper to set Firebase status to OFFLINE
+async function setFirebaseOffline() {
+  try {
+    console.log("\nSetting Firebase status to OFFLINE...");
+    const active = await dbOperations.getActiveOperator();
+    const latest = await dbOperations.getLatestReading();
+
+    if (latest) {
+      await syncToFirebase('latest_reading', {
+        guideName: "Kiran Jadhav",
+        operatorName: latest.operator_name,
+        batchNo: latest.batch_no,
+        acVoltage: latest.ac_voltage,
+        dcVoltage: latest.dc_voltage,
+        current: latest.current,
+        temperature: latest.temperature,
+        timestamp: latest.timestamp,
+        status: "OFFLINE"
+      });
+    } else {
+      await syncToFirebase('latest_reading', null);
+    }
+
+    if (active) {
+      await syncToFirebase('session', {
+        guideName: "Kiran Jadhav",
+        operatorName: active.operatorName,
+        batchNo: active.batchNo,
+        loginTime: active.loginTime,
+        lastSeen: new Date().toISOString(),
+        status: "OFFLINE",
+        readingsCount: active.readingsCount
+      });
+    }
+    console.log("Firebase status successfully updated to OFFLINE.");
+  } catch (err) {
+    console.error("Failed to set Firebase to OFFLINE:", err.message);
+  }
+}
+
+// Handle exit signals
+process.on('SIGINT', async () => {
+  await setFirebaseOffline();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  await setFirebaseOffline();
+  process.exit(0);
 });

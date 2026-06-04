@@ -39,8 +39,10 @@ function initializeDatabase() {
       const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
       insertSetting.run('active_operator', 'Pranav Argade');
       insertSetting.run('batch_no', 'B-2026-06-001');
-      insertSetting.run('login_time', new Date().toISOString());
       insertSetting.finalize();
+      
+      // Always update login_time to current server startup time
+      db.run("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('login_time', ?)", [new Date().toISOString()]);
     });
   });
 }
@@ -159,13 +161,13 @@ const dbOperations = {
     const todayStr = new Date().toISOString().split('T')[0];
     const todayTestsRow = await dbQuery.get("SELECT COUNT(*) as count FROM pcb_readings WHERE timestamp LIKE ?", [`%${todayStr}%`]);
 
-    // Averages (overall)
-    const averagesRow = await dbQuery.get(`
+    // min/max/avg for all parameters
+    const statsRow = await dbQuery.get(`
       SELECT 
-        AVG(ac_voltage) as avg_ac, 
-        AVG(dc_voltage) as avg_dc, 
-        AVG(current) as avg_current, 
-        AVG(temperature) as avg_temp 
+        MIN(ac_voltage) as min_ac, MAX(ac_voltage) as max_ac, AVG(ac_voltage) as avg_ac,
+        MIN(dc_voltage) as min_dc, MAX(dc_voltage) as max_dc, AVG(dc_voltage) as avg_dc,
+        MIN(current) as min_curr, MAX(current) as max_curr, AVG(current) as avg_curr,
+        MIN(temperature) as min_temp, MAX(temperature) as max_temp, AVG(temperature) as avg_temp
       FROM pcb_readings
     `);
 
@@ -176,12 +178,28 @@ const dbOperations = {
     return {
       totalTests: totalTestsRow ? totalTestsRow.count : 0,
       todayTests: todayTestsRow ? todayTestsRow.count : 0,
-      avgAcVoltage: averagesRow && averagesRow.avg_ac ? parseFloat(averagesRow.avg_ac.toFixed(2)) : 0,
-      avgDcVoltage: averagesRow && averagesRow.avg_dc ? parseFloat(averagesRow.avg_dc.toFixed(2)) : 0,
-      avgCurrent: averagesRow && averagesRow.avg_current ? parseFloat(averagesRow.avg_current.toFixed(2)) : 0,
-      avgTemperature: averagesRow && averagesRow.avg_temp ? parseFloat(averagesRow.avg_temp.toFixed(2)) : 0,
       passCount: passRow ? passRow.count : 0,
-      failCount: failRow ? failRow.count : 0
+      failCount: failRow ? failRow.count : 0,
+      acVoltage: {
+        min: statsRow && statsRow.min_ac !== null ? parseFloat(statsRow.min_ac.toFixed(2)) : 0,
+        max: statsRow && statsRow.max_ac !== null ? parseFloat(statsRow.max_ac.toFixed(2)) : 0,
+        avg: statsRow && statsRow.avg_ac !== null ? parseFloat(statsRow.avg_ac.toFixed(2)) : 0
+      },
+      dcVoltage: {
+        min: statsRow && statsRow.min_dc !== null ? parseFloat(statsRow.min_dc.toFixed(2)) : 0,
+        max: statsRow && statsRow.max_dc !== null ? parseFloat(statsRow.max_dc.toFixed(2)) : 0,
+        avg: statsRow && statsRow.avg_dc !== null ? parseFloat(statsRow.avg_dc.toFixed(2)) : 0
+      },
+      current: {
+        min: statsRow && statsRow.min_curr !== null ? parseFloat(statsRow.min_curr.toFixed(3)) : 0,
+        max: statsRow && statsRow.max_curr !== null ? parseFloat(statsRow.max_curr.toFixed(3)) : 0,
+        avg: statsRow && statsRow.avg_curr !== null ? parseFloat(statsRow.avg_curr.toFixed(3)) : 0
+      },
+      temperature: {
+        min: statsRow && statsRow.min_temp !== null ? parseFloat(statsRow.min_temp.toFixed(1)) : 0,
+        max: statsRow && statsRow.max_temp !== null ? parseFloat(statsRow.max_temp.toFixed(1)) : 0,
+        avg: statsRow && statsRow.avg_temp !== null ? parseFloat(statsRow.avg_temp.toFixed(1)) : 0
+      }
     };
   },
 
