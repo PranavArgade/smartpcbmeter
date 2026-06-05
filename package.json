@@ -1,18 +1,34 @@
 {
-  "name": "smart-pcb-meter",
-  "version": "1.0.0",
-  "description": "Industrial IoT Dashboard for Smart PCB Meter",
-  "main": "server.js",
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "sqlite3": "^5.1.7",
+    "apexcharts": "^5.13.0",
+    "date-fns": "^4.4.0",
+    "firebase": "^12.14.0",
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.6",
+    "react-apexcharts": "^2.1.0",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.17.0",
     "xlsx": "^0.18.5"
   },
-  "author": "",
-  "license": "ISC"
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "vite": "^8.0.12"
+  }
 }
