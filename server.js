@@ -27,7 +27,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'frontend', 'dist')));
 
 // Simple Authentication Endpoint
 app.post('/api/login', (req, res) => {
@@ -124,7 +124,7 @@ app.post('/api/readings', async (req, res) => {
         const stats = await dbOperations.getStats();
         const active = await dbOperations.getActiveOperator();
         if (latest) {
-          await syncToFirebase('latest_reading', {
+          const readingPayload = {
             guideName: "Kiran Jadhav",
             operatorName: latest.operator_name,
             batchNo: latest.batch_no,
@@ -133,8 +133,21 @@ app.post('/api/readings', async (req, res) => {
             current: latest.current,
             temperature: latest.temperature,
             timestamp: latest.timestamp,
-            status: "ONLINE"
+            status: latest.status
+          };
+          
+          await syncToFirebase('latest_reading', {
+            ...readingPayload,
+            status: "ONLINE" // Dashboard expects ONLINE for latest_reading connection status
           });
+          
+          // Push to historical readings list
+          const url = `${FIREBASE_DB_URL}/history.json`;
+          await fetch(url, {
+            method: 'POST', // POST pushes to a list in Firebase RTDB
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(readingPayload)
+          }).catch(err => console.error('Firebase sync history list error:', err));
         }
         if (active) {
           await syncToFirebase('session', {
@@ -265,7 +278,7 @@ app.get('/api/readings/export', async (req, res) => {
 
 // Fallback to serving front end index.html
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
